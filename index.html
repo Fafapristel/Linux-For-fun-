@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Linux Desktop Kocak</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<style>
+html, body {
+  margin:0;
+  padding:0;
+  height:100%;
+  width:100%;
+  overflow:hidden;
+  font-family:"Courier New","Lucida Console",monospace;
+  background:#222; /* default desktop color */
+  color:#fff;
+}
+#desktop{
+  width:100%;
+  height:100%;
+  display:grid;
+  grid-template-columns:repeat(auto-fill,70px);
+  grid-auto-rows:80px;
+  gap:5px;
+  padding:5px;
+  box-sizing:border-box;
+  background-size:cover;
+  background-position:center;
+}
+.app{
+  text-align:center;
+  cursor:pointer;
+  font-size:10px;
+  color:#fff;
+  user-select:none;
+}
+.app img{
+  width:40px;
+  height:40px;
+}
+#topbar{
+  position:absolute;
+  top:0;
+  left:0;
+  width:100%;
+  height:30px;
+  background:#000a;
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  padding:0 5px;
+  box-sizing:border-box;
+  border-bottom:1px solid #fff;
+}
+#topbar button{
+  background:#0000;
+  color:#fff;
+  border:1px solid #fff;
+  font-size:10px;
+  cursor:pointer;
+  margin-left:3px;
+  padding:0 5px;
+}
+#terminal{
+  position:absolute;
+  top:0;
+  left:0;
+  width:100%;
+  height:calc(100% - 30px);
+  background:#000;
+  color:#fff;
+  display:none;
+  flex-direction:column;
+  box-sizing:border-box;
+}
+#out{
+  flex:1;
+  padding:50px 5px 5px 5px;
+  overflow:auto;
+  white-space:pre; /* scroll horizontal & vertical */
+}
+input{
+  width:100%;
+  font-size:6px;
+  font-family:"Courier New","Lucida Console",monospace;
+  background:#000;
+  color:#fff;
+  border:none;
+  outline:none;
+  padding:2px;
+  box-sizing:border-box;
+}
+</style>
+</head>
+<body>
+
+<div id="desktop">
+  <div id="topbar">
+    <button onclick="toggleTerminal()">Terminal</button>
+    <button onclick="setWallpaperPrompt()">Wallpaper</button>
+  </div>
+</div>
+
+<div id="terminal">
+  <div id="out">Linux Desktop Kocak v1.0\n\nGuide:\n- type "help basic"\n- type "desktop" to switch view\n- type "pkg" to manage apps\n</div>
+  <input id="cmd" autofocus placeholder="type command...">
+</div>
+
+<script>
+const desktopDiv=document.getElementById("desktop");
+const terminalDiv=document.getElementById("terminal");
+const out=document.getElementById("out");
+const cmd=document.getElementById("cmd");
+
+let desktop=JSON.parse(localStorage.getItem("desktop")||"[]");
+let customCmd=JSON.parse(localStorage.getItem("customCmd")||"{}");
+let wallpaper=localStorage.getItem("wallpaper")||"";
+
+if(wallpaper) desktopDiv.style.backgroundImage=`url(${wallpaper})`;
+
+function save(){ 
+  localStorage.setItem("desktop",JSON.stringify(desktop)); 
+  localStorage.setItem("customCmd",JSON.stringify(customCmd));
+  localStorage.setItem("wallpaper",wallpaper);
+}
+
+function print(t){ 
+  out.textContent+="\n"+t;
+  out.scrollTop=out.scrollHeight;
+  out.scrollLeft=0;
+}
+
+cmd.onkeydown=e=>{
+  if(e.key==="Enter"){
+    run(cmd.value.trim());
+    cmd.value="";
+  }
+};
+
+/* ===== COMMANDS ===== */
+const basicCommands={
+  "help":{"desc":"Displays command info","type":"terminal"},
+  "clear":{"desc":"Clears terminal","type":"terminal"},
+  "desktop":{"desc":"Switch to desktop","type":"desktop"},
+  "terminal":{"desc":"Switch to terminal view","type":"desktop"},
+  "pkg":{"desc":"Manage apps / commands / web shortcuts","type":"pkg"},
+  "wlp":{"desc":"Change wallpaper via URL","type":"desktop"}
+};
+
+const pkgCommands={
+  "import app <name>":{"desc":"Import app or file to desktop","type":"pkg"},
+  "import command <name>":{"desc":"Import JS command","type":"pkg"},
+  "import command pack":{"desc":"Import folder of JS commands","type":"pkg"},
+  "import web <url> <name>":{"desc":"Shortcut web page to desktop","type":"pkg"},
+  "remove":{"desc":"Remove last imported app / shortcut","type":"pkg"}
+};
+
+/* ===== COMMAND HANDLER ===== */
+function run(c){
+  print("> "+c);
+  let a=c.split(" ");
+  if(a[0] in customCmd){
+    try{ eval(customCmd[a[0]]) }catch(e){ print("error running "+a[0]); }
+    return;
+  }
+  switch(a[0]){
+    case "help":
+      if(a[1]==="basic") helpBasic();
+      else if(a[1] && a[1] in basicCommands) helpSmart(a[1]);
+      else print("basic commands: "+Object.keys(basicCommands).join(", ")+"\npkg");
+      break;
+    case "clear": out.textContent=""; break;
+    case "desktop": showDesktop(); break;
+    case "terminal": showTerminal(); break;
+    case "wlp": if(a[1]){ setWallpaper(a[1]); } break;
+    case "pkg":
+      if(a[1]==="import"){
+        if(a[2]==="web") importWeb(a[3],a[4]);
+      }
+      if(a[1]==="remove") removeApp();
+      break;
+    default: print("command not found");
+  }
+}
+
+/* ===== HELP ===== */
+function helpBasic(){
+  for(let cmd in basicCommands) print(cmd);
+}
+
+function helpSmart(cmd){
+  print(`help (${cmd})\nDesc: ${basicCommands[cmd].desc}\nType: ${basicCommands[cmd].type}`);
+  if(cmd==="pkg") for(let p in pkgCommands) print(`${p}: ${pkgCommands[p].desc}`);
+}
+
+/* ===== DESKTOP / APPS ===== */
+function renderDesktop(){
+  desktopDiv.innerHTML="";
+  desktopDiv.appendChild(topbar);
+  desktop.forEach(app=>{
+    const div=document.createElement("div");
+    div.className="app";
+    div.innerHTML=`<img src="${app.icon}"><div>${app.name}</div>`;
+    div.onclick=()=>{eval(app.action)};
+    desktopDiv.appendChild(div);
+  });
+}
+
+function showDesktop(){ terminalDiv.style.display="none"; desktopDiv.style.display="grid"; renderDesktop(); }
+function showTerminal(){ desktopDiv.style.display="none"; terminalDiv.style.display="flex"; cmd.focus(); }
+
+/* ===== WALLPAPER ===== */
+function setWallpaper(url){
+  wallpaper=url;
+  desktopDiv.style.backgroundImage=`url(${url})`;
+  save();
+  print("Wallpaper changed");
+}
+function setWallpaperPrompt(){
+  let url=prompt("Enter wallpaper URL:");
+  if(url) setWallpaper(url);
+}
+
+/* ===== IMPORT WEB ===== */
+function importWeb(url,name){
+  if(!name) name="web";
+  desktop.push({name:name,icon:"https://upload.wikimedia.org/wikipedia/commons/4/45/Internet-web-icon.png",action:`window.open("${url}")`});
+  save();
+  renderDesktop();
+  print("Web shortcut added: "+name);
+}
+
+/* ===== REMOVE ===== */
+function removeApp(){
+  if(desktop.length===0){ print("no app to remove"); return; }
+  let r=desktop.pop();
+  save(); renderDesktop(); print("removed: "+r.name);
+}
+
+/* ===== INIT ===== */
+const topbar=document.getElementById("topbar");
+showDesktop();
+
+function toggleTerminal(){
+  if(terminalDiv.style.display==="none") showTerminal();
+  else showDesktop();
+}
+</script>
+
+</body>
+</html>
